@@ -172,13 +172,20 @@ func the_bot() {
 					anti_error(err)
 					msg.Text = string(data)
 				case "exit":
-					hash, err := hash_pswd(current_user.pswd)
-					anti_error(err)
-					log.Println("Exit")
-					log.Println("hash to write: ", hash)
-					current_user.pswd = hash
-					current_user.flag = -1
-					msg.Text = "Хранилище закрыто"
+					switch current_user.flag {
+					case -2:
+						msg.Text = "Сначала создайте хрвнилище"
+					case -1:
+						msg.Text = "Хранилище уже закрыто"
+					default:
+						hash, err := hash_pswd(current_user.pswd)
+						anti_error(err)
+						log.Println("Exit")
+						log.Println("hash to write: ", hash)
+						current_user.pswd = hash
+						current_user.flag = -1
+						msg.Text = "Хранилище закрыто"
+					}
 				default:
 					msg.Text = "Я не знаю такой команды"
 				}
