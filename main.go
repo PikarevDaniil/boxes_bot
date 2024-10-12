@@ -36,7 +36,7 @@ func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users (id bigint, flag tinyint, pswd text)")
 	anti_error(err)
 	// Bot Settings
-	bot, err := tg.NewBotAPI("token")
+	bot, err := tg.NewBotAPI("7598717728:AAEEuCqnQebc7_tKyYHUk6_hPwMRnvNg_Ws")
 	anti_error(err)
 	bot.Debug = false
 	log.Printf("Authorized on account %s", bot.Self.UserName)
@@ -135,16 +135,20 @@ func the_bot() {
 					}
 				case "add":
 					switch current_user.flag {
-					case -2, -1:
-						msg.Text = "Откройте хранилище для начала работы"
+					case -2:
+						msg.Text = "Сначала создайте хранилище"
+					case -1:
+						msg.Text = "Сначала откройте хранилище"
 					default:
 						msg.Text = "Введите заглавие новой записи"
 						current_user.flag = 3
 					}
 				case "del":
 					switch current_user.flag {
-					case -2, -1:
-						msg.Text = "Откройте хранилище для начала работы"
+					case -2:
+						msg.Text = "Сначала создайте хранилище"
+					case -1:
+						msg.Text = "Сначала откройте хранилище"
 					default:
 						current_user.flag = 1
 						if check_keyboard(db, current_user) {
@@ -156,8 +160,10 @@ func the_bot() {
 					}
 				case "find":
 					switch current_user.flag {
-					case -2, -1:
-						msg.Text = "Откройте хранилище для начала работы"
+					case -2:
+						msg.Text = "Сначала создайте хранилище"
+					case -1:
+						msg.Text = "Сначала откройте хранилище"
 					default:
 						current_user.flag = 0
 						if check_keyboard(db, current_user) {
@@ -180,8 +186,6 @@ func the_bot() {
 					default:
 						hash, err := hash_pswd(current_user.pswd)
 						anti_error(err)
-						log.Println("Exit")
-						log.Println("hash to write: ", hash)
 						current_user.pswd = hash
 						current_user.flag = -1
 						msg.Text = "Хранилище закрыто"
@@ -332,7 +336,6 @@ func delete(db *sql.DB, site string, user User) {
 }
 
 func build(db *sql.DB, user User) tg.InlineKeyboardMarkup {
-	log.Println("Building Keyboard...")
 	rows, err := db.Query("SELECT site FROM hub WHERE id =?", user.id)
 	anti_error(err)
 
@@ -420,7 +423,6 @@ func open_user(db *sql.DB, id int64) User {
 }
 
 func close_user(db *sql.DB, user User) {
-	log.Println("pswd to write: ", user.pswd)
 	_, err := db.Exec("UPDATE users SET flag =?, pswd =? WHERE id =?", user.flag, user.pswd, user.id)
 	anti_error(err)
 }
@@ -443,11 +445,9 @@ func auth(user User, pswd string) (User, bool) {
 		is_correct = true
 	} else if user.flag == -1 {
 		if check_pswd(pswd, user) {
-			log.Println("Correct pswd")
 			user.pswd = pswd
 			is_correct = true
 		} else {
-			log.Println("Incorrent pswd")
 			is_correct = false
 		}
 	}
@@ -468,8 +468,6 @@ func welcome(user User, name string, bot *tg.BotAPI, db *sql.DB) tg.MessageConfi
 }
 
 func check_pswd(pswd string, user User) bool {
-	log.Println("hash to check: ", user.pswd)
-	log.Println("pswd to check: ", pswd)
 	return bcrypt.CompareHashAndPassword([]byte(user.pswd), []byte(pswd)) == nil
 }
 
