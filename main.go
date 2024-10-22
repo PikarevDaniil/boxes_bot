@@ -1,10 +1,10 @@
 package main
 
+// imports
 import (
 	"database/sql"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -16,16 +16,19 @@ import (
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// User's structure
 type User struct {
 	id   int64
 	flag int8
 	pswd string
 }
 
+// interence point
 func main() {
 	the_bot()
 }
 
+// settings
 func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	// mySQL connecting
 	db, err := sql.Open("mysql", "root:root@tcp(mysql:3306)/boxes")
@@ -36,10 +39,9 @@ func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users (id bigint, flag tinyint, pswd text)")
 	anti_error(err)
 	// Bot Settings
-	bot, err := tg.NewBotAPI("7598717728:AAEEuCqnQebc7_tKyYHUk6_hPwMRnvNg_Ws")
+	bot, err := tg.NewBotAPI("token")
 	anti_error(err)
 	bot.Debug = false
-	log.Printf("Authorized on account %s", bot.Self.UserName)
 
 	// Update Settings
 	u := tg.NewUpdate(0)
@@ -48,6 +50,7 @@ func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	return db, bot, updates
 }
 
+// the main function
 func the_bot() {
 	// Variables
 	db, bot, updates := set_tools()
@@ -75,7 +78,7 @@ func the_bot() {
 						msg.Text = "Неверно, попробуйте другой"
 					}
 				case 0:
-					sites := check(db, update.Message.Text, current_user)
+					sites := site_list(db, current_user, update.Message.Text)
 					if len(sites) == 0 {
 						msg.Text = "Запись не найдена"
 					} else if len(sites) == 1 {
@@ -90,13 +93,13 @@ func the_bot() {
 						msg.ReplyMarkup = tg.NewInlineKeyboardMarkup(kb...)
 					}
 				case 1:
-					sites := check(db, update.Message.Text, current_user)
+					sites := site_list(db, current_user, update.Message.Text)
 					if len(sites) == 0 {
 						msg.Text = "Запись не найдена"
 
 					} else if len(sites) == 1 {
 						var site string
-						site, err = crypt.Encrypt(sites[0], strconv.Itoa(int(current_user.id)))
+						site, err = crypt.Encrypt(sites[0], current_user.pswd)
 						anti_error(err)
 						request := "INSERT INTO hub (id, site) VALUES (?, ?)"
 						_, err = db.Exec(request, current_user.id, site)
@@ -124,7 +127,6 @@ func the_bot() {
 				// Handle the command
 				switch update.Message.Command() {
 				case "start":
-					log.Println("Enter")
 					if current_user.flag == -2 {
 						msg.Text = "Введите новый мастер-пароль"
 					} else if current_user.flag == -1 {
@@ -136,9 +138,9 @@ func the_bot() {
 				case "add":
 					switch current_user.flag {
 					case -2:
-						msg.Text = "Сначала создайте хранилище"
+						msg.Text = "Сначала создайте сейф"
 					case -1:
-						msg.Text = "Сначала откройте хранилище"
+						msg.Text = "Сначала откройте сейф"
 					default:
 						msg.Text = "Введите заглавие новой записи"
 						current_user.flag = 3
@@ -146,9 +148,9 @@ func the_bot() {
 				case "del":
 					switch current_user.flag {
 					case -2:
-						msg.Text = "Сначала создайте хранилище"
+						msg.Text = "Сначала создайте сейф"
 					case -1:
-						msg.Text = "Сначала откройте хранилище"
+						msg.Text = "Сначала откройте сейф"
 					default:
 						current_user.flag = 1
 						if check_keyboard(db, current_user) {
@@ -161,9 +163,9 @@ func the_bot() {
 				case "find":
 					switch current_user.flag {
 					case -2:
-						msg.Text = "Сначала создайте хранилище"
+						msg.Text = "Сначала создайте сейф"
 					case -1:
-						msg.Text = "Сначала откройте хранилище"
+						msg.Text = "Сначала откройте сейф"
 					default:
 						current_user.flag = 0
 						if check_keyboard(db, current_user) {
@@ -180,15 +182,15 @@ func the_bot() {
 				case "exit":
 					switch current_user.flag {
 					case -2:
-						msg.Text = "Сначала создайте хрвнилище"
+						msg.Text = "Сначала создайте сейф"
 					case -1:
-						msg.Text = "Хранилище уже закрыто"
+						msg.Text = "Сейф уже закрыт"
 					default:
 						hash, err := hash_pswd(current_user.pswd)
 						anti_error(err)
 						current_user.pswd = hash
 						current_user.flag = -1
-						msg.Text = "Хранилище закрыто"
+						msg.Text = "Сейф закрыт"
 					}
 				default:
 					msg.Text = "Я не знаю такой команды"
@@ -205,7 +207,7 @@ func the_bot() {
 			anti_error(err)
 
 			if current_user.flag == 0 {
-				sites := check(db, update.CallbackQuery.Data, current_user)
+				sites := site_list(db, current_user, update.CallbackQuery.Data)
 				if len(sites) == 0 {
 					msg.Text = "Запись не найдена"
 					_, err = bot.Send(msg)
@@ -214,12 +216,12 @@ func the_bot() {
 					read(db, sites[0], bot, current_user)
 				}
 			} else if current_user.flag == 1 {
-				sites := check(db, update.CallbackQuery.Data, current_user)
+				sites := site_list(db, current_user, update.CallbackQuery.Data)
 				if len(sites) == 0 {
 					msg.Text = "Запись не найдена"
 				} else {
 					var site string
-					site, err = crypt.Encrypt(sites[0], strconv.Itoa(int(current_user.id)))
+					site, err = crypt.Encrypt(sites[0], current_user.pswd)
 					anti_error(err)
 					_, err = db.Exec("INSERT INTO hub (id, site) VALUES (?, ?)", current_user.id, site)
 					anti_error(err)
@@ -236,7 +238,7 @@ func the_bot() {
 				anti_error(err)
 			} else if current_user.flag == 2 && update.CallbackQuery.Data == "Да" {
 				current_user.flag = 1
-				site, err := crypt.Decrypt(read_site(db, current_user), strconv.Itoa(int(current_user.id)))
+				site, err := crypt.Decrypt(read_site(db, current_user), current_user.pswd)
 				anti_error(err)
 				delete(db, site, current_user)
 				msg.Text = "Запись Удалена"
@@ -249,7 +251,7 @@ func the_bot() {
 				anti_error(err)
 			}
 		} else {
-			sticker := tg.NewSticker(current_user.id, tg.FileID("CAACAgIAAxkBAAEMk7VmqmwGNzv67g2mcRrawivei0Q16wACN0IAAiJIEEtr9OEdF85NeDUE"))
+			sticker := tg.NewSticker(current_user.id, tg.FileID("CAACAgQAAxkBAAEM_ThnE9BBV2OTXbeH4HJTua8fUCTt1wACagsAAlH1YVLTY1eFH2Fh3DYE"))
 			_, err := bot.Send(sticker)
 			anti_error(err)
 		}
@@ -258,6 +260,7 @@ func the_bot() {
 	}
 }
 
+// write data
 func write(user User, text string, db *sql.DB) (User, string) {
 	out := "..."
 	var err error
@@ -289,6 +292,7 @@ func write(user User, text string, db *sql.DB) (User, string) {
 	return user, out
 }
 
+// read data
 func read(db *sql.DB, site string, bot *tg.BotAPI, user User) {
 	rows, err := db.Query("SELECT site, login, pswd FROM hub WHERE id =?", user.id)
 	anti_error(err)
@@ -316,6 +320,7 @@ func read(db *sql.DB, site string, bot *tg.BotAPI, user User) {
 	}
 }
 
+// remove data
 func delete(db *sql.DB, site string, user User) {
 	rows, err := db.Query("SELECT site FROM hub WHERE id =?", user.id)
 	anti_error(err)
@@ -327,7 +332,6 @@ func delete(db *sql.DB, site string, user User) {
 		anti_error(err)
 		outsite, err = crypt.Decrypt(crypt_out, user.pswd)
 		anti_error(err)
-		log.Println(site, outsite)
 		if strings.EqualFold(site, outsite) {
 			_, err = db.Exec("DELETE FROM hub WHERE id =? AND site =?", user.id, crypt_out)
 			anti_error(err)
@@ -335,43 +339,17 @@ func delete(db *sql.DB, site string, user User) {
 	}
 }
 
+// build keyboard with user's data
 func build(db *sql.DB, user User) tg.InlineKeyboardMarkup {
-	rows, err := db.Query("SELECT site FROM hub WHERE id =?", user.id)
-	anti_error(err)
-
-	defer rows.Close()
-	var sites []string
-	var keyboard [][]tg.InlineKeyboardButton
-	for rows.Next() {
-		var site string
-		err := rows.Scan(&site)
-		anti_error(err)
-		site, err = crypt.Decrypt(site, user.pswd)
-		anti_error(err)
-		if !in_list(sites, site) {
-			sites = append(sites, site)
-			keyboard = append(keyboard, tg.NewInlineKeyboardRow(tg.NewInlineKeyboardButtonData(site, site)))
-		}
+	var kb [][]tg.InlineKeyboardButton
+	for _, site := range site_list(db, user, "") {
+		kb = append(kb, tg.NewInlineKeyboardRow(tg.NewInlineKeyboardButtonData(site, site)))
 	}
-	return tg.NewInlineKeyboardMarkup(keyboard...)
+	return tg.NewInlineKeyboardMarkup(kb...)
 }
 
-func check_keyboard(db *sql.DB, user User) bool {
-	_, err := db.Exec("DELETE FROM hub WHERE id =? AND pswd IS NULL", user.id)
-	anti_error(err)
-	is_rows, err := db.Query("SELECT COUNT(site) FROM hub WHERE id =?", user.id)
-	anti_error(err)
-
-	defer is_rows.Close()
-	var out int
-	for is_rows.Next() {
-		is_rows.Scan(&out)
-	}
-	return out > 0
-}
-
-// TO RENAME
-func check(db *sql.DB, site string, user User) []string {
+// site list for finding
+func site_list(db *sql.DB, user User, site string) []string {
 	_, err := db.Exec("DELETE FROM hub WHERE id =? AND pswd IS NULL", user.id)
 	anti_error(err)
 	rows, err := db.Query("SELECT site FROM hub WHERE id =?", user.id)
@@ -392,6 +370,21 @@ func check(db *sql.DB, site string, user User) []string {
 	return out
 }
 
+// check if the user has written any data
+func check_keyboard(db *sql.DB, user User) bool {
+	_, err := db.Exec("DELETE FROM hub WHERE id =? AND pswd IS NULL", user.id)
+	anti_error(err)
+	is_rows, err := db.Query("SELECT COUNT(site) FROM hub WHERE id =?", user.id)
+	anti_error(err)
+
+	defer is_rows.Close()
+	var out int
+	for is_rows.Next() {
+		is_rows.Scan(&out)
+	}
+	return out > 0
+}
+
 func in_list(list []string, e string) bool {
 	for _, a := range list {
 		if a == e {
@@ -407,6 +400,18 @@ func anti_error(err error) {
 	}
 }
 
+func read_site(db *sql.DB, user User) string {
+	var out string
+	row, err := db.Query("SELECT site FROM hub WHERE id =? AND login IS NULL", user.id)
+	anti_error(err)
+	for row.Next() {
+		err := row.Scan(&out)
+		anti_error(err)
+	}
+	return out
+}
+
+// get user's paramethers
 func open_user(db *sql.DB, id int64) User {
 	var user User
 	row := db.QueryRow("SELECT flag, pswd FROM users WHERE id =?", id)
@@ -422,22 +427,27 @@ func open_user(db *sql.DB, id int64) User {
 	return user
 }
 
+// set user's paramethers
 func close_user(db *sql.DB, user User) {
 	_, err := db.Exec("UPDATE users SET flag =?, pswd =? WHERE id =?", user.flag, user.pswd, user.id)
 	anti_error(err)
 }
 
-func read_site(db *sql.DB, user User) string {
-	var out string
-	row, err := db.Query("SELECT site FROM hub WHERE id =? AND login IS NULL", user.id)
-	anti_error(err)
-	for row.Next() {
-		err := row.Scan(&out)
-		anti_error(err)
+// welcome, user!
+func welcome(user User, name string, bot *tg.BotAPI, db *sql.DB) tg.MessageConfig {
+	msg := tg.NewMessage(user.id, "")
+	msg.Text = "Добро пожаловать, " + name + "!"
+	bot.Send(msg)
+	if check_keyboard(db, user) {
+		msg.Text = "Выберите запись..."
+		msg.ReplyMarkup = build(db, user)
+	} else {
+		msg.Text = "У вас нет ни одной записи"
 	}
-	return out
+	return msg
 }
 
+// authorisation
 func auth(user User, pswd string) (User, bool) {
 	var is_correct bool
 	if user.flag == -2 {
@@ -454,23 +464,12 @@ func auth(user User, pswd string) (User, bool) {
 	return user, is_correct
 }
 
-func welcome(user User, name string, bot *tg.BotAPI, db *sql.DB) tg.MessageConfig {
-	msg := tg.NewMessage(user.id, "")
-	msg.Text = "Добро пожаловать, " + name + "!"
-	bot.Send(msg)
-	if check_keyboard(db, user) {
-		msg.Text = "Выберите запись..."
-		msg.ReplyMarkup = build(db, user)
-	} else {
-		msg.Text = "У вас нет ни одной записи"
-	}
-	return msg
-}
-
+// check if user entered right master-pswd
 func check_pswd(pswd string, user User) bool {
 	return bcrypt.CompareHashAndPassword([]byte(user.pswd), []byte(pswd)) == nil
 }
 
+// hash user's master-pswd
 func hash_pswd(pswd string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(pswd), bcrypt.DefaultCost)
 	return string(bytes), err
