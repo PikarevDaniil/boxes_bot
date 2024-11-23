@@ -39,7 +39,7 @@ func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users (id bigint, flag tinyint, pswd text)")
 	anti_error(err)
 	// Bot Settings
-	bot, err := tg.NewBotAPI("token")
+	bot, err := tg.NewBotAPI("7598717728:AAEEuCqnQebc7_tKyYHUk6_hPwMRnvNg_Ws")
 	anti_error(err)
 	bot.Debug = false
 
@@ -54,23 +54,24 @@ func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 func the_bot() {
 	// Variables
 	db, bot, updates := set_tools()
+	users := make(map[int64]string)
+	var err error
 
 	// Main loop
 	for update := range updates {
-		var err error
-		current_user := open_user(db, update.FromChat().ID)
+		current_user := open_user(db, update.FromChat().ID, users)
 		msg := tg.NewMessage(current_user.id, "") // Create a new Message instance
 
 		if update.Message != nil && update.Message.Text != "" {
 			if !update.Message.IsCommand() {
 				switch current_user.flag {
 				case -2:
-					current_user, _ = auth(current_user, update.Message.Text)
+					current_user, _ = auth(current_user, update.Message.Text, users, db)
 					msg = welcome(current_user, update.FromChat().FirstName, bot, db)
 					current_user.flag = 0
 				case -1:
 					var ok bool
-					current_user, ok = auth(current_user, update.Message.Text)
+					current_user, ok = auth(current_user, update.Message.Text, users, db)
 					if ok {
 						msg = welcome(current_user, update.FromChat().FirstName, bot, db)
 						current_user.flag = 0
@@ -120,6 +121,16 @@ func the_bot() {
 						}
 						msg.ReplyMarkup = tg.NewInlineKeyboardMarkup(kb...)
 					}
+				case 2:
+					if update.Message.Text == "Да" {
+						site, err := crypt.Decrypt(read_site(db, current_user), current_user.pswd)
+						anti_error(err)
+						delete_data(db, site, current_user)
+						msg.Text = "Запись Удалена"
+					} else {
+						msg.Text = "Удалние Отменено"
+					}
+					current_user.flag = 1
 				case 3, 4, 5:
 					current_user, msg.Text = write(current_user, update.Message.Text, db)
 				}
@@ -186,9 +197,7 @@ func the_bot() {
 					case -1:
 						msg.Text = "Сейф уже закрыт"
 					default:
-						hash, err := hash_pswd(current_user.pswd)
-						anti_error(err)
-						current_user.pswd = hash
+						delete(users, current_user.id)
 						current_user.flag = -1
 						msg.Text = "Сейф закрыт"
 					}
@@ -240,7 +249,7 @@ func the_bot() {
 				current_user.flag = 1
 				site, err := crypt.Decrypt(read_site(db, current_user), current_user.pswd)
 				anti_error(err)
-				delete(db, site, current_user)
+				delete_data(db, site, current_user)
 				msg.Text = "Запись Удалена"
 				_, err = bot.Send(msg)
 				anti_error(err)
@@ -321,7 +330,7 @@ func read(db *sql.DB, site string, bot *tg.BotAPI, user User) {
 }
 
 // remove data
-func delete(db *sql.DB, site string, user User) {
+func delete_data(db *sql.DB, site string, user User) {
 	rows, err := db.Query("SELECT site FROM hub WHERE id =?", user.id)
 	anti_error(err)
 	defer rows.Close()
@@ -412,15 +421,17 @@ func read_site(db *sql.DB, user User) string {
 }
 
 // get user's paramethers
-func open_user(db *sql.DB, id int64) User {
+func open_user(db *sql.DB, id int64, users map[int64]string) User {
 	var user User
 	row := db.QueryRow("SELECT flag, pswd FROM users WHERE id =?", id)
 	user.id = id
 	err := row.Scan(&user.flag, &user.pswd)
 	if err == sql.ErrNoRows {
-		_, err = db.Exec("INSERT INTO users (id, flag) VALUES (?, ?)", id, -2)
+		_, err = db.Exec("INSERT INTO users (id, flag, pswd) VALUES (?, ?, ?)", id, -2, "")
 		anti_error(err)
 		return User{id, -2, ""}
+	} else if pswd, ok := users[id]; ok {
+		user.pswd = pswd
 	}
 	anti_error(err)
 
@@ -429,7 +440,7 @@ func open_user(db *sql.DB, id int64) User {
 
 // set user's paramethers
 func close_user(db *sql.DB, user User) {
-	_, err := db.Exec("UPDATE users SET flag =?, pswd =? WHERE id =?", user.flag, user.pswd, user.id)
+	_, err := db.Exec("UPDATE users SET flag =? WHERE id =?", user.flag, user.id)
 	anti_error(err)
 }
 
@@ -448,14 +459,18 @@ func welcome(user User, name string, bot *tg.BotAPI, db *sql.DB) tg.MessageConfi
 }
 
 // authorisation
-func auth(user User, pswd string) (User, bool) {
+func auth(user User, pswd string, users map[int64]string, db *sql.DB) (User, bool) {
 	var is_correct bool
 	if user.flag == -2 {
-		user.pswd = pswd
+		users[user.id] = pswd
+		hash, err := hash_pswd(pswd)
+		anti_error(err)
+		_, err = db.Exec("UPDATE users SET pswd =? WHERE id =?", hash, user.id)
+		anti_error(err)
 		is_correct = true
 	} else if user.flag == -1 {
 		if check_pswd(pswd, user) {
-			user.pswd = pswd
+			users[user.id] = pswd
 			is_correct = true
 		} else {
 			is_correct = false
