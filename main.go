@@ -430,8 +430,11 @@ func open_user(db *sql.DB, id int64, users map[int64]string) User {
 		_, err = db.Exec("INSERT INTO users (id, flag, pswd) VALUES (?, ?, ?)", id, -2, "")
 		anti_error(err)
 		return User{id, -2, ""}
-	} else if pswd, ok := users[id]; ok {
-		user.pswd = pswd
+	}
+	if _, ok := users[user.id]; !ok {
+		user.flag = -1
+	} else {
+		user.pswd = users[user.id]
 	}
 	anti_error(err)
 
@@ -471,6 +474,7 @@ func auth(user User, pswd string, users map[int64]string, db *sql.DB) (User, boo
 	} else if user.flag == -1 {
 		if check_pswd(pswd, user) {
 			users[user.id] = pswd
+			user.pswd = pswd
 			is_correct = true
 		} else {
 			is_correct = false
