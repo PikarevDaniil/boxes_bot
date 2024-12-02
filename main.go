@@ -6,13 +6,13 @@ import (
 	"log"
 	"os"
 	"strings"
-	
+
 	"golang.org/x/crypto/bcrypt"
-	
+
 	"github.com/AlexanderGrom/componenta/crypt"
-	
+
 	_ "github.com/go-sql-driver/mysql"
-	
+
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -25,6 +25,28 @@ type User struct {
 
 var db, bot, updates = set_tools()
 var users = make(map[int64]string)
+
+// settings
+func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
+	// mySQL connecting
+	db, err := sql.Open("mysql", "root:root@tcp(mysql:3306)/boxes")
+	anti_error(err)
+	// Creating tables
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS hub (id bigint, site TEXT, login TEXT, pswd TEXT)")
+	anti_error(err)
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users (id bigint, flag tinyint, pswd text)")
+	anti_error(err)
+	// Bot Settings
+	bot, err := tg.NewBotAPI("token")
+	anti_error(err)
+	bot.Debug = false
+
+	// Update Settings
+	u := tg.NewUpdate(0)
+	updates := bot.GetUpdatesChan(u)
+
+	return db, bot, updates
+}
 
 // check if element in list
 func in_list(list []string, e string) bool {
@@ -62,35 +84,13 @@ func main() {
 			msg, current_user = handle_kd(current_user, msg, update)
 			bot.Send(msg)
 		} else {
-			sticker := tg.NewSticker(current_user.id, tg.FileID("token"))
+			sticker := tg.NewSticker(current_user.id, tg.FileID("sticker ID"))
 			_, err := bot.Send(sticker)
 			anti_error(err)
 		}
 		// Update the user data with new user's flag
 		close_user(current_user)
 	}
-}
-
-// settings
-func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
-	// mySQL connecting
-	db, err := sql.Open("mysql", "root:root@tcp(mysql:3306)/boxes")
-	anti_error(err)
-	// Creating tables
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS hub (id bigint, site TEXT, login TEXT, pswd TEXT)")
-	anti_error(err)
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users (id bigint, flag tinyint, pswd text)")
-	anti_error(err)
-	// Bot Settings
-	bot, err := tg.NewBotAPI("7598717728:AAEEuCqnQebc7_tKyYHUk6_hPwMRnvNg_Ws")
-	anti_error(err)
-	bot.Debug = false
-
-	// Update Settings
-	u := tg.NewUpdate(0)
-	updates := bot.GetUpdatesChan(u)
-
-	return db, bot, updates
 }
 
 // handle text msg
@@ -138,6 +138,10 @@ func handle_text(user User, msg tg.MessageConfig, update tg.Update) (tg.MessageC
 		user.flag = 1
 	case 3, 4, 5:
 		user, msg.Text = write(user, update.Message.Text)
+	case 6:
+		change_pswd(update.Message.Text, user.id)
+		msg.Text = "Вы успешно сменили мастер-пароль!"
+		user.flag = 0
 	}
 	return msg, user
 }
@@ -209,6 +213,16 @@ func handle_command(user User, msg tg.MessageConfig, update tg.Update) (tg.Messa
 			user.flag = -1
 			msg.Text = "Сейф закрыт"
 		}
+	case "change":
+		if user.flag == -2 {
+			msg.Text = "Сначала создайте сейф"
+		} else if user.flag == -1 {
+			msg.Text = "Сначала откройте сейф"
+		} else {
+			msg.Text = "Введите новый мастер-пароль"
+			user.flag = 6
+		}
+
 	default:
 		msg.Text = "Я не знаю такой команды"
 	}
@@ -433,7 +447,7 @@ func open_user(id int64) User {
 		anti_error(err)
 		return User{id, -2, ""}
 	}
-	if _, ok := users[user.id]; !ok {
+	if _, ok := users[user.id]; !ok && user.flag != -2 {
 		user.flag = -1
 	} else {
 		user.pswd = users[user.id]
@@ -494,4 +508,36 @@ func check_pswd(pswd string, user User) bool {
 func hash_pswd(pswd string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(pswd), bcrypt.DefaultCost)
 	return string(bytes), err
+}
+
+func change_pswd(new_master_pswd string, id int64) {
+	var site string
+	var login string
+	var pswd string
+	query := "UPDATE hub SET site =?, login =?, pswd =? WHERE id =? AND site =? AND login =? AND pswd =?"
+	to_write, err := hash_pswd(new_master_pswd)
+	rows, err := db.Query("SELECT site, login, pswd FROM hub WHERE id =?", id)
+	anti_error(err)
+	defer rows.Close()
+	for rows.Next() {
+
+		rows.Scan(&site, &login, &pswd)
+		new_site, err := crypt.Decrypt(site, users[id])
+		anti_error(err)
+		new_login, err := crypt.Decrypt(login, users[id])
+		anti_error(err)
+		new_pswd, err := crypt.Decrypt(pswd, users[id])
+		anti_error(err)
+
+		new_site, err = crypt.Encrypt(new_site, new_master_pswd)
+		anti_error(err)
+		new_login, err = crypt.Encrypt(new_login, new_master_pswd)
+		anti_error(err)
+		new_pswd, err = crypt.Encrypt(new_pswd, new_master_pswd)
+		anti_error(err)
+
+		db.Exec(query, new_site, new_login, new_pswd, id, site, login, pswd)
+	}
+	db.Exec("UPDATE users SET pswd =? WHERE id =?", to_write, id)
+	users[id] = new_master_pswd
 }
