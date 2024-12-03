@@ -32,7 +32,7 @@ func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	db, err := sql.Open("mysql", "root:root@tcp(mysql:3306)/boxes")
 	anti_error(err)
 	// Creating tables
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS hub (id bigint, site TEXT, login TEXT, pswd TEXT)")
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS hub (n int auto_increment primary key, id bigint, site TEXT, login TEXT, pswd TEXT)")
 	anti_error(err)
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users (id bigint, flag tinyint, pswd text)")
 	anti_error(err)
@@ -511,17 +511,18 @@ func hash_pswd(pswd string) (string, error) {
 }
 
 func change_pswd(new_master_pswd string, id int64) {
+	var n int
 	var site string
 	var login string
 	var pswd string
-	query := "UPDATE hub SET site =?, login =?, pswd =? WHERE id =? AND site =? AND login =? AND pswd =?"
+	query := "UPDATE hub SET site =?, login =?, pswd =? WHERE n =?"
 	to_write, err := hash_pswd(new_master_pswd)
-	rows, err := db.Query("SELECT site, login, pswd FROM hub WHERE id =?", id)
+	rows, err := db.Query("SELECT n, site, login, pswd FROM hub WHERE id =?", id)
 	anti_error(err)
 	defer rows.Close()
 	for rows.Next() {
 
-		rows.Scan(&site, &login, &pswd)
+		rows.Scan(&n, &site, &login, &pswd)
 		new_site, err := crypt.Decrypt(site, users[id])
 		anti_error(err)
 		new_login, err := crypt.Decrypt(login, users[id])
@@ -536,7 +537,7 @@ func change_pswd(new_master_pswd string, id int64) {
 		new_pswd, err = crypt.Encrypt(new_pswd, new_master_pswd)
 		anti_error(err)
 
-		db.Exec(query, new_site, new_login, new_pswd, id, site, login, pswd)
+		db.Exec(query, new_site, new_login, new_pswd, n)
 	}
 	db.Exec("UPDATE users SET pswd =? WHERE id =?", to_write, id)
 	users[id] = new_master_pswd
