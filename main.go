@@ -239,8 +239,6 @@ func handle_kd(user User, msg tg.MessageConfig, update tg.Update) (tg.MessageCon
 		sites := site_list(user, update.CallbackQuery.Data, 2)
 		if len(sites) == 0 {
 			msg.Text = "Запись не найдена"
-			_, err = bot.Send(msg)
-			anti_error(err)
 		} else {
 			read(sites[0], user)
 		}
