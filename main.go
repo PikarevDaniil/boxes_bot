@@ -29,7 +29,7 @@ var users = make(map[int64]string)
 // settings
 func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	// mySQL connecting
-	db, err := sql.Open("mysql", "root:root@tcp(mysql:3306)/boxes")
+	db, err := sql.Open("mysql", "root:"+os.Getenv("MYSQL_PASSWORD")+"@tcp(mysql:3306)/boxes")
 	anti_error(err)
 	// Creating tables
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS hub (n int auto_increment primary key, id bigint, site TEXT, login TEXT, pswd TEXT)")
