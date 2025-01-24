@@ -37,7 +37,7 @@ func set_tools() (*sql.DB, *tg.BotAPI, tg.UpdatesChannel) {
 	_, err = db.Exec("CREATE TABLE IF NOT EXISTS users (id bigint, flag tinyint, pswd text)")
 	anti_error(err)
 	// Bot Settings
-	bot, err := tg.NewBotAPI("token")
+	bot, err := tg.NewBotAPI(os.Getenv("TELEGRAM_APITOKEN"))
 	anti_error(err)
 	bot.Debug = false
 
@@ -68,6 +68,9 @@ func anti_error(err error) {
 // interence point
 func main() {
 	for update := range updates {
+		if update.FromChat() == nil {
+			continue
+		}
 		current_user := open_user(update.FromChat().ID)
 		msg := tg.NewMessage(current_user.id, "") // Create a new Message instance
 
