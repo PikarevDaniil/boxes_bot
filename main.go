@@ -69,6 +69,7 @@ func anti_error(err error) {
 func main() {
 	for update := range updates {
 		if update.FromChat() == nil {
+			log.Println("Ошибка: update.FromChat() вернул nil. Пропускаем обновление.")
 			continue
 		}
 		current_user := open_user(update.FromChat().ID)
@@ -87,7 +88,7 @@ func main() {
 			msg, current_user = handle_kd(current_user, msg, update)
 			bot.Send(msg)
 		} else {
-			sticker := tg.NewSticker(current_user.id, tg.FileID("sticker ID"))
+			sticker := tg.NewSticker(current_user.id, tg.FileID("CAACAgIAAxkBAAENep1ngqeRXehcx8gz_8Ma2tPoKcy9uAACjicAAnJ6-UgOlPQwPgxYlzYE"))
 			_, err := bot.Send(sticker)
 			anti_error(err)
 		}
@@ -154,7 +155,7 @@ func handle_command(user User, msg tg.MessageConfig, update tg.Update) (tg.Messa
 	switch update.Message.Command() {
 	case "start":
 		if user.flag == -2 {
-			msg.Text = "Введите новый мастер-пароль"
+			msg.Text = "Введите мастер-пароль, которым будут шифроваться ваши данные"
 		} else if user.flag == -1 {
 			msg.Text = "Введите свой мастер-пароль"
 		} else {
@@ -183,7 +184,7 @@ func handle_command(user User, msg tg.MessageConfig, update tg.Update) (tg.Messa
 				msg.Text = "Выберите запись"
 				msg.ReplyMarkup = build(user)
 			} else {
-				msg.Text = "У вас нет ни одной записи"
+				msg.Text = "Сейф пуст..."
 			}
 		}
 	case "find":
@@ -198,7 +199,7 @@ func handle_command(user User, msg tg.MessageConfig, update tg.Update) (tg.Messa
 				msg.Text = "Выберите запись..."
 				msg.ReplyMarkup = build(user)
 			} else {
-				msg.Text = "У вас нет ни одной записи"
+				msg.Text = "Ваш сейф пуст..."
 			}
 		}
 	case "help":
@@ -214,7 +215,7 @@ func handle_command(user User, msg tg.MessageConfig, update tg.Update) (tg.Messa
 		default:
 			delete(users, user.id)
 			user.flag = -1
-			msg.Text = "Сейф закрыт"
+			msg.Text = "Сейф успешно закрыт"
 		}
 	case "change":
 		if user.flag == -2 {
