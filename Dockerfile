@@ -15,8 +15,7 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/help.txt .
 CMD ["./main"]
 
+ENV TELEGRAM_APITOKEN=<token>
 ENV MYSQL_HOST=mysql
 ENV MYSQL_USER=root
 ENV MYSQL_DB=boxes
-ENV MYSQL_PASSWORD=<pswd>
-ENV TELEGRAM_APITOKEN=<token>
