@@ -5,7 +5,7 @@
 4. In directory run `docker build -t <username>/boxes .`
 5. Run `docker push <username>/boxes`
 
-To run this app on your server: 
+## To run this app on your server: 
  - Install docker. 
  - Pull images: `mysql` and `<username>/boxes` from Docker Hub. 
  - Create a network `boxes` for this app. 
